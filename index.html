@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Product Inventory (XML) - Acme Manufacturing</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8a' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .product-img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+  <!-- Nav -->
+  <header class="bg-brand-900 text-white sticky top-0 z-50 shadow-md">
+    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+      <a href="index.html" class="flex items-center gap-2 font-bold text-lg">
+        <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-brand-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10"/></svg>
+        </span>
+        Acme Inventory
+      </a>
+      <button id="menuToggle" class="md:hidden p-2 rounded hover:bg-white/10" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobileMenu">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <ul id="navLinks" class="hidden md:flex items-center gap-1">
+        <li><a href="index.html" class="px-3 py-2 rounded-md bg-brand-600 text-white font-medium">Products (XML)</a></li>
+        <li><a href="weather.html" class="px-3 py-2 rounded-md text-slate-200 hover:bg-white/10">Weather (JSON)</a></li>
+      </ul>
+    </nav>
+    <ul id="mobileMenu" class="hidden md:hidden px-4 pb-3 space-y-1 bg-brand-900">
+      <li><a href="index.html" class="block px-3 py-2 rounded-md bg-brand-600 text-white">Products (XML)</a></li>
+      <li><a href="weather.html" class="block px-3 py-2 rounded-md text-slate-200 hover:bg-white/10">Weather (JSON)</a></li>
+    </ul>
+  </header>
+
+  <!-- Hero -->
+  <section class="relative h-64 sm:h-80 overflow-hidden">
+    <img src="images/hero.jpg" alt="Office workspace" class="absolute inset-0 w-full h-full object-cover">
+    <div class="absolute inset-0 bg-gradient-to-r from-brand-900/80 to-brand-700/40"></div>
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex flex-col justify-center">
+      <h1 class="text-3xl sm:text-5xl font-extrabold text-white drop-shadow">Product Inventory</h1>
+      <p class="mt-3 text-lg text-blue-100 max-w-2xl">Browse all products manufactured by Acme Manufacturing, powered by XML data exchange. Search by product code or filter by category.</p>
+    </div>
+  </section>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <!-- Search -->
+    <section class="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6">
+      <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/></svg>
+        Search Product by Code
+      </h2>
+      <form id="searchForm" class="flex flex-col sm:flex-row gap-3">
+        <div class="flex-1">
+          <label for="searchCode" class="sr-only">Product Code</label>
+          <input type="text" id="searchCode" name="searchCode" placeholder="e.g. 101-23" pattern="[0-9]{3}-[0-9]{2}" maxlength="6"
+                 title="Enter a product code in the format ###-## (e.g. 101-23)" required autocomplete="off"
+                 class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+        </div>
+        <button type="submit" id="searchBtn" class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700 transition">Search</button>
+        <button type="button" id="clearBtn" class="px-5 py-2.5 rounded-lg bg-slate-100 text-slate-700 font-medium hover:bg-slate-200 transition">Clear</button>
+      </form>
+      <div id="searchResult" class="mt-4" aria-live="polite"></div>
+    </section>
+
+    <!-- Products table -->
+    <section class="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+        <h2 class="text-xl font-semibold">All Products</h2>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <select id="categoryFilter" class="px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-brand-500">
+            <option value="">All categories</option>
+          </select>
+          <input type="text" id="nameFilter" placeholder="Filter by name..." class="px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-brand-500">
+        </div>
+      </div>
+      <div id="loadStatus" class="mb-4 px-4 py-3 rounded-lg bg-blue-50 text-blue-800 border border-blue-200" role="status" aria-live="polite">Loading products from XML...</div>
+      <div class="overflow-x-auto">
+        <table id="productTable" class="hidden w-full text-sm">
+          <thead class="bg-slate-100 text-slate-700">
+            <tr>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Code</th>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Product</th>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Category</th>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Description</th>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Qty</th>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Unit Price</th>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Status</th>
+            </tr>
+          </thead>
+          <tbody id="productBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+      <div id="emptyState" class="hidden mt-4 px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200" role="status" aria-live="polite">No products match your filters.</div>
+    </section>
+  </main>
+
+  <footer class="bg-white border-t border-slate-200 mt-12">
+    <div class="max-w-7xl mx-auto px-4 py-6 text-center text-sm text-slate-500">
+      &copy; 2026 Acme Manufacturing Co. &mdash; Web Application Development (H6WAD)
+    </div>
+  </footer>
+
+  <script src="products-fallback.js"></script>
+  <script src="products.js"></script>
+  <script>
+    // Mobile menu toggle
+    const mt = document.getElementById('menuToggle');
+    const mm = document.getElementById('mobileMenu');
+    if (mt && mm) {
+      mt.addEventListener('click', () => {
+        const hidden = mm.classList.toggle('hidden');
+        mt.setAttribute('aria-expanded', String(!hidden));
+      });
+    }
+  </script>
+</body>
+</html>

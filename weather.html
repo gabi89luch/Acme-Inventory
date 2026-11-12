@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Lookup (JSON) - Acme Manufacturing</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8a' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+  <header class="bg-brand-900 text-white sticky top-0 z-50 shadow-md">
+    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+      <a href="index.html" class="flex items-center gap-2 font-bold text-lg">
+        <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-brand-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10"/></svg>
+        </span>
+        Acme Inventory
+      </a>
+      <button id="menuToggle" class="md:hidden p-2 rounded hover:bg-white/10" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobileMenu">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <ul class="hidden md:flex items-center gap-1">
+        <li><a href="index.html" class="px-3 py-2 rounded-md text-slate-200 hover:bg-white/10">Products (XML)</a></li>
+        <li><a href="weather.html" class="px-3 py-2 rounded-md bg-brand-600 text-white font-medium">Weather (JSON)</a></li>
+      </ul>
+    </nav>
+    <ul id="mobileMenu" class="hidden md:hidden px-4 pb-3 space-y-1 bg-brand-900">
+      <li><a href="index.html" class="block px-3 py-2 rounded-md text-slate-200 hover:bg-white/10">Products (XML)</a></li>
+      <li><a href="weather.html" class="block px-3 py-2 rounded-md bg-brand-600 text-white">Weather (JSON)</a></li>
+    </ul>
+  </header>
+
+  <section class="relative h-64 sm:h-80 overflow-hidden">
+    <img src="images/weather.jpg" alt="Weather sky" class="absolute inset-0 w-full h-full object-cover">
+    <div class="absolute inset-0 bg-gradient-to-r from-brand-900/80 to-brand-700/40"></div>
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex flex-col justify-center">
+      <h1 class="text-3xl sm:text-5xl font-extrabold text-white drop-shadow">Weather Lookup</h1>
+      <p class="mt-3 text-lg text-blue-100 max-w-2xl">Enter a city name to retrieve current weather from the web service (JSON).</p>
+    </div>
+  </section>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <section class="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6">
+      <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+        Search Weather
+      </h2>
+      <form id="weatherForm" class="flex flex-col sm:flex-row gap-3">
+        <div class="flex-1">
+          <label for="cityInput" class="sr-only">City Name</label>
+          <input type="text" id="cityInput" name="city" placeholder="e.g. Dublin" required maxlength="60"
+                 title="Enter a single city name, e.g. Dublin or São Paulo" autocomplete="address-level2"
+                 class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+        </div>
+        <button type="submit" id="weatherBtn" class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700 transition">Get Weather</button>
+      </form>
+      <p id="formError" class="mt-3 px-4 py-3 rounded-lg bg-red-50 text-red-800 border border-red-200" role="alert" aria-live="assertive" hidden></p>
+
+      <div id="keyNotice" class="mt-3 px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200" role="status" hidden>
+        No API key configured yet &mdash; add your WeatherAPI key in <strong>API Key Settings</strong> below before searching.
+      </div>
+
+      <details class="mt-4">
+        <summary class="cursor-pointer text-brand-600 font-medium">API Key Settings</summary>
+        <div class="mt-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+          <label for="apiKeyInput" class="block text-sm font-medium text-slate-700 mb-1">WeatherAPI Key</label>
+          <div class="flex flex-col sm:flex-row gap-3">
+            <input type="text" id="apiKeyInput" placeholder="Paste your API key here"
+                   class="flex-1 px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-brand-500">
+            <button type="button" id="saveKeyBtn" class="px-4 py-2 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800 transition">Save Key</button>
+          </div>
+          <p class="mt-2 text-xs text-slate-500">Get a free key at weatherapi.com. The key is stored in your browser (localStorage).</p>
+        </div>
+      </details>
+    </section>
+
+    <section id="resultCard" class="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6" hidden>
+      <div id="loading" class="flex items-center gap-3 text-slate-600" hidden>
+        <svg class="animate-spin h-6 w-6 text-brand-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+        </svg>
+        Fetching weather data...
+      </div>
+      <div id="weatherResult" aria-live="polite"></div>
+      <div id="weatherError" class="mt-3 px-4 py-3 rounded-lg bg-red-50 text-red-800 border border-red-200" role="alert" hidden></div>
+    </section>
+  </main>
+
+  <footer class="bg-white border-t border-slate-200 mt-12">
+    <div class="max-w-7xl mx-auto px-4 py-6 text-center text-sm text-slate-500">
+      &copy; 2026 Acme Manufacturing Co. &mdash; Web Application Development (H6WAD)
+    </div>
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="weather.js"></script>
+  <script>
+    const mt = document.getElementById('menuToggle');
+    const mm = document.getElementById('mobileMenu');
+    if (mt && mm) {
+      mt.addEventListener('click', () => {
+        const hidden = mm.classList.toggle('hidden');
+        mt.setAttribute('aria-expanded', String(!hidden));
+      });
+    }
+  </script>
+</body>
+</html>
