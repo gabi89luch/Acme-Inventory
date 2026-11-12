@@ -460,7 +460,7 @@
         ? "WeatherAPI returned limited data for this location"
         : "WeatherAPI request failed" + (result.reason ? " (" + result.reason + ")" : "");
       notice = `<div class="mb-4 px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-sm font-medium">
-           ${escapeHtml(why)} &mdash; showing fallback data from Open-Meteo.
+           ${escapeHtml(why)} - showing fallback data from Open-Meteo.
          </div>`;
     } else if (n.tempC == null && n.humidity == null && n.windKph == null) {
       notice = `<div class="mb-4 px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-sm font-medium">

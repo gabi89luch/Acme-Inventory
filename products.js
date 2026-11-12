@@ -61,7 +61,7 @@
 
       els.status.className = "mb-4 px-4 py-3 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200";
       els.status.textContent = "Loaded " + products.length + " products from products.xml." +
-        (usedFallback ? " (embedded copy — local file mode)" : "");
+        (usedFallback ? " (embedded copy - local file mode)" : "");
       populateCategories();
       renderTable();
     } catch (err) {
