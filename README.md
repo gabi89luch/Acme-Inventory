@@ -10,7 +10,7 @@ Web application for the H6WAD Continuous Assessment (Part A).
 - `products-fallback.js` - embedded copy of `products.xml`, used only when the
   page is opened directly via `file://`
 - `weather.html` - Weather page (JSON technology, Section 2)
-- `weather.js` - Fetches weather data from WeatherAPI and renders it
+- `weather.js` - Fetches weather data from OpenWeatherMap and renders it
 - `config.js` - Configuration (API key)
 - `favicon.svg` - Browser tab icon
 - `images/` - Category and hero images
@@ -34,22 +34,24 @@ python3 -c "x=open('products.xml').read(); open('products-fallback.js','w').writ
 ```
 
 ## Weather API key
-1. Register for a free key at https://www.weatherapi.com/signup.aspx
+1. Register for a free key at https://home.openweathermap.org/users/sign_up
 2. Open the Weather page -> "API Key Settings" -> paste key -> Save
    (or set `WEATHER_API_KEY` in `config.js`)
 
+New OpenWeatherMap keys can take a few minutes to activate. If the page says
+the key is invalid, wait a little and try again.
+
 The app makes a GET request to:
-`https://api.weatherapi.com/v1/current.json?key=[YOUR_API_KEY]&q=[CITY]`
+`https://api.openweathermap.org/data/2.5/weather?q=[CITY]&appid=[YOUR_API_KEY]&units=metric`
 as required by the brief.
 
-If WeatherAPI returns a complete response it is used on its own. If the key is
-restricted and the response omits measurements (some keys return only rain/snow
-probabilities), the missing fields are filled from Open-Meteo using the
-coordinates WeatherAPI reported. Open-Meteo supplies visibility and UV index
-from its hourly series, so every card is populated. If the WeatherAPI request
-fails entirely, the app falls back to Open-Meteo and geocodes the city name.
-The data source is always labelled, and both raw JSON responses are visible
-under "Show raw JSON response".
+OpenWeatherMap is always the first request. It returns temperature, humidity,
+pressure, wind and visibility, but its current weather endpoint has no UV index.
+The missing measurements are filled from Open-Meteo using the coordinates
+OpenWeatherMap reported, so every card is populated. If the OpenWeatherMap
+request fails entirely, the app falls back to Open-Meteo and geocodes the city
+name. The data source is always labelled, and both raw JSON responses are
+visible under "Show raw JSON response".
 
 ## Implementation notes
 - The XML is parsed with `DOMParser`, including a `parsererror` check and

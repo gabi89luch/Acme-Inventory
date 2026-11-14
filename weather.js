@@ -1,17 +1,17 @@
 // Weather page.
 //
-// The brief says to call
-//   https://api.weatherapi.com/v1/current.json?key=[KEY]&q=[CITY]
-// so that is always the first request. The catch is that our WeatherAPI plan
-// only returns rain/snow probabilities from current.json, not temp/humidity/
-// wind. So:
+// Section 2 of the brief asks for a GET request to OpenWeatherMap:
+//   https://api.openweathermap.org/data/2.5/weather?q=[CITY]&appid=[KEY]&units=metric
+// so that is always the first request. OpenWeatherMap returns temperature,
+// humidity, pressure, wind and visibility, but its current weather endpoint does
+// not include a UV index. So:
 //
-//   1. Call WeatherAPI. If temp_c comes back, use it and we are done.
-//   2. If the location block is there but the measurements are not, keep the
-//      WeatherAPI name/country/lat/lon and fill the numbers from Open-Meteo.
-//      Visibility and UV are hourly series there, so pick the current hour.
-//   3. If WeatherAPI fails outright, geocode the city with Open-Meteo and use
-//      its forecast endpoint on its own.
+//   1. Call OpenWeatherMap. If it answers, use it.
+//   2. If a measurement is missing (usually UV, sometimes visibility), keep the
+//      OpenWeatherMap values and fill the gap from Open-Meteo using the
+//      coordinates OpenWeatherMap returned.
+//   3. If OpenWeatherMap fails outright, geocode the city with Open-Meteo and
+//      use its forecast endpoint on its own.
 //
 // The page always says which service the numbers came from, and the raw JSON
 // is in the collapsible panel so the response can be checked by hand.
@@ -32,18 +32,26 @@
     keyNotice: document.getElementById("keyNotice"),
   };
 
-  const STORAGE_KEY = "weatherApiKey";
+  // A separate storage key from the old provider, so a key saved in
+  // an earlier session cannot be picked up by mistake.
+  const STORAGE_KEY = "openWeatherMapApiKey";
+  const OPEN_WEATHER_URL = "https://api.openweathermap.org/data/2.5/weather";
   const OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast";
   const OPEN_METEO_GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
+  const PLACEHOLDER_KEYS = ["", "YOUR_API_KEY", "YOUR_API_KEY_HERE"];
+
+  function isPlaceholder(key) {
+    return PLACEHOLDER_KEYS.indexOf(String(key || "").trim()) !== -1;
+  }
 
   // Precedence: a key saved in Settings (localStorage) beats the one baked into
   // config.js, so the page can be tested with a different key without editing
   // any files. The placeholder is treated as "no key".
   function getApiKey() {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && stored.trim() && stored !== "YOUR_API_KEY_HERE") return stored.trim();
+    if (stored && !isPlaceholder(stored)) return stored.trim();
     const cfg = (window.APP_CONFIG && window.APP_CONFIG.WEATHER_API_KEY) || "";
-    if (cfg && cfg.trim() && cfg !== "YOUR_API_KEY_HERE") return cfg.trim();
+    if (!isPlaceholder(cfg)) return cfg.trim();
     return "";
   }
 
@@ -111,29 +119,40 @@
   }
 
   // ------------------------------------------------------------------
-  // WeatherAPI call - the URL from the brief, nothing extra bolted on
+  // OpenWeatherMap call - the URL from the brief, with units=metric
   // ------------------------------------------------------------------
   async function fetchWeather(city) {
     const apiKey = getApiKey();
     if (!apiKey) {
-      throw new Error("No API key configured. Please save your WeatherAPI key in Settings.");
+      throw new Error("No API key configured. Please save your OpenWeatherMap API key in Settings.");
     }
-    const base = (window.APP_CONFIG && window.APP_CONFIG.WEATHER_BASE_URL) || "https://api.weatherapi.com/v1/current.json";
-    const url = `${base}?key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(city)}`;
+    const base = (window.APP_CONFIG && window.APP_CONFIG.WEATHER_BASE_URL) || OPEN_WEATHER_URL;
+    const params = new URLSearchParams({
+      q: city,
+      appid: apiKey,
+      units: "metric",
+    });
+    const url = `${base}?${params.toString()}`;
     const res = await fetch(url);
     let data = null;
     try { data = await res.json(); } catch (e) { data = null; }
     if (!res.ok) {
-      const msg = (data && data.error && data.error.message) ? data.error.message : ("HTTP " + res.status);
-      throw new Error(msg);
+      const msg = (data && data.message) ? data.message : ("HTTP " + res.status);
+      const err = new Error(msg);
+      err.status = res.status;
+      throw err;
     }
     if (!data) throw new Error("Empty response from weather service.");
-    if (data.error) throw new Error(data.error.message || "Weather service error.");
+    if (String(data.cod) !== "200") {
+      const err = new Error(data.message || "Weather service error.");
+      err.status = Number(data.cod) || 0;
+      throw err;
+    }
     return data;
   }
 
   // ------------------------------------------------------------------
-  // Open-Meteo - free, no key, and it actually returns current values
+  // Open-Meteo - free, no key, and it has the UV index OpenWeatherMap lacks
   // ------------------------------------------------------------------
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -184,8 +203,8 @@
     return data;
   }
 
-  // Only used when WeatherAPI failed, because then we have no coordinates for
-  // Open-Meteo. It takes a city name and returns the best match.
+  // Only used when OpenWeatherMap failed, because then we have no coordinates
+  // for Open-Meteo. It takes a city name and returns the best match.
   async function geocodeCity(city) {
     const params = new URLSearchParams({ name: city, count: "1", language: "en", format: "json" });
     const data = await fetchJson(`${OPEN_METEO_GEO_URL}?${params.toString()}`, "Location lookup");
@@ -252,35 +271,46 @@
     return idx >= 0 ? idx : null;
   }
 
-  // hint picks the parser: "weatherapi" or "open-meteo". Without it we sniff
-  // the payload shape. place is only needed for Open-Meteo, because that
+  // OpenWeatherMap sends dt as Unix UTC seconds plus a timezone offset in
+  // seconds. Shift the timestamp by the offset and read it back with UTC
+  // getters, which gives the local clock time in the city without depending on
+  // the visitor's own timezone.
+  function formatLocalTime(unixSeconds, offsetSeconds) {
+    if (unixSeconds == null) return "";
+    const d = new Date((unixSeconds + (offsetSeconds || 0)) * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()) +
+      " " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes());
+  }
+
+  // hint picks the parser: "openweathermap" or "open-meteo". Without it we
+  // sniff the payload shape. place is only needed for Open-Meteo, because that
   // response has coordinates but no city name.
   function normalize(data, hint, place) {
-    // WeatherAPI shape
-    if (hint !== "open-meteo" && data && data.location && data.current) {
-      const loc = data.location;
-      const cur = data.current;
-      const cond = cur.condition || {};
+    // OpenWeatherMap shape
+    if (hint !== "open-meteo" && data && data.main && Array.isArray(data.weather)) {
+      const w = data.weather[0] || {};
+      const local = formatLocalTime(data.dt, data.timezone);
       return {
-        source: "WeatherAPI",
-        name: loc.name,
-        country: loc.country,
-        region: loc.region,
-        localtime: loc.localtime,
-        lat: numOrNull(loc.lat),
-        lon: numOrNull(loc.lon),
-        tempC: numOrNull(cur.temp_c),
-        feelsLikeC: numOrNull(cur.feelslike_c),
-        conditionText: cond.text || "N/A",
+        source: "OpenWeatherMap",
+        name: data.name || "Unknown",
+        country: (data.sys && data.sys.country) || "",
+        region: "",
+        localtime: local,
+        lat: numOrNull(data.coord && data.coord.lat),
+        lon: numOrNull(data.coord && data.coord.lon),
+        tempC: numOrNull(data.main.temp),
+        feelsLikeC: numOrNull(data.main.feels_like),
+        conditionText: w.description || "N/A",
         conditionEmoji: "",
-        conditionIcon: cond.icon || "",
-        humidity: numOrNull(cur.humidity),
-        windKph: numOrNull(cur.wind_kph),
-        windDir: cur.wind_dir || "",
-        pressureMb: numOrNull(cur.pressure_mb),
-        visKm: numOrNull(cur.vis_km),
-        uv: numOrNull(cur.uv),
-        lastUpdated: cur.last_updated || "",
+        conditionIcon: w.icon ? `https://openweathermap.org/img/wn/${w.icon}@2x.png` : "",
+        humidity: numOrNull(data.main.humidity),
+        windKph: data.wind ? numOrNull(data.wind.speed * 3.6) : null,
+        windDir: data.wind && data.wind.deg != null ? degToCompass(data.wind.deg) : "",
+        pressureMb: numOrNull(data.main.pressure),
+        visKm: data.visibility != null ? numOrNull(data.visibility / 1000) : null,
+        uv: null,
+        lastUpdated: local,
       };
     }
     // Open-Meteo shape
@@ -313,32 +343,6 @@
         lastUpdated: time,
       };
     }
-    // OpenWeatherMap shape. Nothing on this page calls it, but normalize() is
-    // meant to be provider-agnostic and the branch costs nothing.
-    if (data && data.main && Array.isArray(data.weather)) {
-      const w = data.weather[0] || {};
-      return {
-        source: "OpenWeatherMap",
-        name: data.name,
-        country: (data.sys && data.sys.country) || "",
-        region: "",
-        localtime: "",
-        lat: numOrNull(data.coord && data.coord.lat),
-        lon: numOrNull(data.coord && data.coord.lon),
-        tempC: numOrNull(data.main.temp),
-        feelsLikeC: numOrNull(data.main.feels_like),
-        conditionText: w.description || "N/A",
-        conditionEmoji: "",
-        conditionIcon: w.icon ? `https://openweathermap.org/img/wn/${w.icon}@2x.png` : "",
-        humidity: numOrNull(data.main.humidity),
-        windKph: data.wind ? numOrNull(data.wind.speed * 3.6) : null,
-        windDir: "",
-        pressureMb: numOrNull(data.main.pressure),
-        visKm: data.visibility != null ? numOrNull(data.visibility / 1000) : null,
-        uv: null,
-        lastUpdated: "",
-      };
-    }
     // Unknown shape. Best effort: try the common field names, then give up.
     return {
       source: "Unknown response format",
@@ -363,12 +367,24 @@
     };
   }
 
-  // Our key returns only rain/snow probabilities from current.json, so the
-  // WeatherAPI object is mostly empty. Start from the Open-Meteo values and
-  // overwrite with anything WeatherAPI did give us. Name, country and condition
-  // text stay from WeatherAPI because it knows the city the user typed.
   const MEASUREMENT_FIELDS = ["tempC", "feelsLikeC", "humidity", "windKph", "pressureMb", "visKm", "uv"];
+  const FIELD_LABELS = {
+    tempC: "temperature",
+    feelsLikeC: "feels like temperature",
+    humidity: "humidity",
+    windKph: "wind speed",
+    pressureMb: "pressure",
+    visKm: "visibility",
+    uv: "UV index",
+  };
 
+  function missingMeasurements(n) {
+    return MEASUREMENT_FIELDS.filter((key) => n[key] == null);
+  }
+
+  // Start from the Open-Meteo values and overwrite with anything OpenWeatherMap
+  // did give us. Name, country, condition and observation time stay from
+  // OpenWeatherMap because it knows the city the user typed.
   function mergeNormalized(primary, supplement) {
     const merged = Object.assign({}, supplement);
     MEASUREMENT_FIELDS.forEach((key) => {
@@ -386,16 +402,17 @@
       merged.conditionEmoji = primary.conditionEmoji;
       merged.conditionIcon = primary.conditionIcon;
     }
-    merged.source = "WeatherAPI + Open-Meteo (supplementary)";
+    merged.lastUpdated = primary.lastUpdated || supplement.lastUpdated;
+    merged.source = "OpenWeatherMap + Open-Meteo (supplementary)";
     return merged;
   }
 
   // ------------------------------------------------------------------
-  // Putting it together: WeatherAPI first, merge if partial, fall back if broken
+  // Putting it together: OpenWeatherMap first, enrich if partial, fall back
   // ------------------------------------------------------------------
   async function loadWeather(city) {
     if (!getApiKey()) {
-      throw new Error("No API key configured. Please save your WeatherAPI key in Settings.");
+      throw new Error("No API key configured. Please save your OpenWeatherMap API key in Settings.");
     }
 
     let primary = null;
@@ -403,36 +420,56 @@
 
     try {
       primary = await fetchWeather(city);
-      const n = normalize(primary, "weatherapi");
+      const n = normalize(primary, "openweathermap");
       if (n.tempC != null) {
-        return { data: primary, n, fallback: false, primaryOk: true };
-      }
-      // It answered but temp_c is null, which means we got the restricted
-      // payload. Use its lat/lon to pull the real numbers from Open-Meteo and
-      // merge them, keeping the original response for the raw JSON panel.
-      primaryError = new Error("WeatherAPI returned limited data for this location.");
-      if (n.lat != null && n.lon != null) {
-        try {
-          const fb = await fetchOpenMeteo(n.lat, n.lon);
-          const supplement = normalize(fb, "open-meteo", { name: n.name, country: n.country });
-          return {
-            data: primary,
-            fbData: fb,
-            n: mergeNormalized(n, supplement),
-            fallback: false,
-            merged: true,
-            primaryOk: true,
-            primaryData: primary,
-          };
-        } catch (fbErr) {
-          primaryError = new Error("WeatherAPI returned limited data (" + fbErr.message + ")");
+        const missing = missingMeasurements(n);
+        // UV is always missing from this endpoint, so normally we do make the
+        // second call. If Open-Meteo is down we still return the OpenWeatherMap
+        // data instead of throwing away a perfectly good response.
+        if (missing.length && n.lat != null && n.lon != null) {
+          try {
+            const fb = await fetchOpenMeteo(n.lat, n.lon);
+            const supplement = normalize(fb, "open-meteo", { name: n.name, country: n.country });
+            const merged = mergeNormalized(n, supplement);
+            return {
+              data: primary,
+              fbData: fb,
+              n: merged,
+              fallback: false,
+              primaryOk: true,
+              primaryData: primary,
+              enriched: true,
+              filledFields: missing.filter((key) => merged[key] != null),
+            };
+          } catch (fbErr) {
+            return {
+              data: primary,
+              n,
+              fallback: false,
+              primaryOk: true,
+              primaryData: primary,
+              missingFields: missing,
+              enrichmentError: fbErr.message,
+            };
+          }
         }
+        return {
+          data: primary,
+          n,
+          fallback: false,
+          primaryOk: true,
+          primaryData: primary,
+          missingFields: missing,
+        };
       }
+      primaryError = new Error("OpenWeatherMap returned no temperature for this location.");
     } catch (e) {
       primaryError = e;
     }
 
-    // WeatherAPI is unusable. Geocode the city and use Open-Meteo on its own.
+    // OpenWeatherMap is unusable. Geocode the city and use Open-Meteo on its
+    // own. A 404 here usually means the city name is wrong, but Open-Meteo's
+    // location database is different, so give it a chance before giving up.
     try {
       const geo = await geocodeCity(city);
       const fb = await fetchOpenMeteo(geo.latitude, geo.longitude);
@@ -445,6 +482,9 @@
         primaryData: primary,
       };
     } catch (fbErr) {
+      if (primaryError && primaryError.status === 404) {
+        throw new Error(`No city found named "${city}".`);
+      }
       throw new Error(
         (primaryError ? primaryError.message + " " : "") + "Fallback also failed: " + fbErr.message
       );
@@ -473,22 +513,25 @@
     const data = result.data;
 
     // Say which service this is. Hiding a fallback would make the page look
-    // like WeatherAPI worked when it did not.
+    // like OpenWeatherMap worked when it did not.
     let notice = "";
-    if (result.merged) {
-      notice = `<div class="mb-4 px-4 py-3 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-sm font-medium">
-           WeatherAPI returned a partial response for this location, so the missing measurements were filled from Open-Meteo.
-         </div>`;
-    } else if (result.fallback) {
-      const why = result.primaryOk
-        ? "WeatherAPI returned limited data for this location"
-        : "WeatherAPI request failed" + (result.reason ? " (" + result.reason + ")" : "");
+    if (result.fallback) {
+      const why = "OpenWeatherMap request failed" + (result.reason ? " (" + result.reason + ")" : "");
       notice = `<div class="mb-4 px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-sm font-medium">
            ${escapeHtml(why)} - showing fallback data from Open-Meteo.
          </div>`;
-    } else if (n.tempC == null && n.humidity == null && n.windKph == null) {
+    } else if (result.enriched && result.filledFields && result.filledFields.length) {
+      const labels = result.filledFields.map((key) => FIELD_LABELS[key] || key);
+      const list = labels.length === 1
+        ? labels[0]
+        : labels.slice(0, -1).join(", ") + " and " + labels[labels.length - 1];
+      const verb = labels.length === 1 ? "that value is" : "those values are";
+      notice = `<div class="mb-4 px-4 py-3 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-sm font-medium">
+           OpenWeatherMap does not return ${escapeHtml(list)} in its current weather response, so ${verb} filled from Open-Meteo.
+         </div>`;
+    } else if (result.missingFields && result.missingFields.length) {
       notice = `<div class="mb-4 px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-sm font-medium">
-           The weather service returned limited data for this location, so some details are shown as N/A.
+           The weather service did not return every measurement for this location, so some details are shown as N/A.
          </div>`;
     }
 
@@ -507,24 +550,25 @@
     const rawPre = (obj) =>
       `<pre class="mt-1 text-xs bg-slate-100 p-3 rounded-lg overflow-x-auto">${escapeHtml(JSON.stringify(obj, null, 2))}</pre>`;
 
-    if (result.merged) {
+    if (result.primaryData && (result.enriched || result.fallback)) {
       rawPanels.push(
-        `<p class="mt-3 text-xs font-semibold text-slate-500">WeatherAPI response (required endpoint):</p>` +
+        `<p class="mt-3 text-xs font-semibold text-slate-500">OpenWeatherMap response (required endpoint):</p>` +
         rawPre(result.primaryData)
       );
+    }
+    if (result.enriched) {
       rawPanels.push(
         `<p class="mt-3 text-xs font-semibold text-slate-500">Open-Meteo supplementary response:</p>` +
         rawPre(result.fbData)
       );
-    } else {
-      if (result.fallback && result.primaryOk !== false && result.primaryData) {
-        rawPanels.push(
-          `<p class="mt-3 text-xs font-semibold text-slate-500">WeatherAPI response (required endpoint):</p>` +
-          rawPre(result.primaryData)
-        );
-      }
+    } else if (result.fallback) {
       rawPanels.push(
-        `<p class="mt-3 text-xs font-semibold text-slate-500">${result.fallback ? "Open-Meteo fallback response:" : "Response:"}</p>` +
+        `<p class="mt-3 text-xs font-semibold text-slate-500">Open-Meteo fallback response:</p>` +
+        rawPre(data)
+      );
+    } else {
+      rawPanels.push(
+        `<p class="mt-3 text-xs font-semibold text-slate-500">OpenWeatherMap response:</p>` +
         rawPre(data)
       );
     }
