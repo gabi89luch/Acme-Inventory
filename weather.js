@@ -2,7 +2,7 @@
 //
 // One GET request to OpenWeatherMap, as Section 2 of the brief asks, plus a
 // quick geocoding lookup so a repeated name like Dublin does not land in the
-// wrong country. There is no fallback service and no merged data here.
+// wrong country.
 (function () {
   "use strict";
 
