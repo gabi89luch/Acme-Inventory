@@ -1,8 +1,7 @@
-// products-fallback.js - GENERATED from products.xml.
-// Purpose: browsers block fetch() of local files when index.html is opened
-// directly via file://. products.js uses this embedded copy only when the
-// fetch fails; when the folder is served over HTTP it reads products.xml.
-// Regenerate this file if products.xml changes:
+// Generated from products.xml, do not hand edit.
+// Browsers block fetch() on file:// pages, so products.js falls back to this
+// copy when the real request fails. Served over HTTP, products.xml wins.
+// Rebuild after changing products.xml:
 //   python3 -c "x=open('products.xml').read(); open('products-fallback.js','w').write('window.PRODUCTS_XML_FALLBACK = `'+x+'`;\n')"
 window.PRODUCTS_XML_FALLBACK = `<?xml version="1.0" encoding="UTF-8"?>
 <!-- Product inventory for the company. Exchange format: XML -->

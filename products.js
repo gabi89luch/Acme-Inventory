@@ -1,4 +1,6 @@
-// products.js - XML parsing & rendering for the Product Inventory page
+// Product inventory page.
+// Loads products.xml, checks the records against the spec, then handles the
+// table, search and filters. Plain DOM, no framework.
 (function () {
   "use strict";
 
@@ -30,9 +32,10 @@
 
   async function loadProducts() {
     try {
-      // Prefer the real XML file. If the page was opened directly from disk
-      // (file://), browsers block fetch() of local files, so fall back to the
-      // embedded copy generated from products.xml.
+      // Try the real XML file first. If someone double-clicks index.html the
+      // page runs on file:// and the browser refuses to fetch local files, so
+      // catch that and use the embedded copy in products-fallback.js. Same XML,
+      // just pasted in by a small script.
       let text;
       let usedFallback = false;
       try {
@@ -77,8 +80,10 @@
       const el = node.querySelector(tag);
       return el ? el.textContent.trim() : "";
     };
-    // Validate data types per the specification:
-    // code must match ###-##, quantity an integer >= 0, unitPrice a decimal >= 0.00.
+    // Spec: code is ###-##, quantity is a non-negative integer, unitPrice is a
+    // non-negative decimal. parseInt/parseFloat are loose (parseInt("12abc")
+    // gives 12), so a malformed string can still pass as a number. The XML is
+    // clean, so this is really here to catch empty, negative and NaN values.
     if (!CODE_PATTERN.test(code)) {
       console.warn("Skipping product with invalid code format (expected ###-##):", code || "(missing)");
       return null;
@@ -118,6 +123,8 @@
     });
   }
 
+  // Stock thresholds are a display rule, not data: zero is out, under ten is
+  // low. Change these two numbers if the warehouse changes its definition.
   function stockBadge(p) {
     if (p.quantity === 0) return '<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Out of stock</span>';
     if (p.quantity < 10) return '<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Low stock</span>';
@@ -127,6 +134,8 @@
   function renderTable() {
     const cat = els.categoryFilter.value;
     const nameQ = els.nameFilter.value.trim().toLowerCase();
+    // Filter in memory. Twelve products do not justify a server round trip,
+    // and it keeps typing in the name box instant.
     const filtered = products.filter((p) => {
       if (cat && p.category !== cat) return false;
       if (nameQ && !p.name.toLowerCase().includes(nameQ)) return false;
@@ -166,6 +175,9 @@
     els.body.appendChild(frag);
   }
 
+  // Product names and descriptions come from the XML and get inserted with
+  // innerHTML, so escape them first. Without this a name containing < or & would
+  // break the table, and anything script-like would run.
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, "&amp;")
@@ -175,8 +187,9 @@
       .replace(/'/g, "&#039;");
   }
 
-  // Look up a product by code using an XPath query against the loaded XML document.
-  // (XPath demonstrates parsing skills beyond the basic DOM traversal used in class.)
+  // XPath lookup against the XML document. It is the natural way to query XML
+  // and it sits nicely next to the querySelectorAll pass above. document.evaluate
+  // is missing in some old browsers, hence the feature check.
   function findByCodeXPath(code) {
     if (!xmlDoc || typeof document.evaluate !== "function") return null;
     try {
@@ -265,8 +278,9 @@
   els.categoryFilter.addEventListener("change", renderTable);
   els.nameFilter.addEventListener("input", renderTable);
 
-  // NOTE: the mobile menu toggle is handled once, inline in index.html.
-  // (An earlier duplicate listener here cancelled itself out and broke the menu.)
+  // Menu toggle lives inline in index.html on purpose. I had a handler here as
+  // well at first and the two toggled the class twice, so the menu looked dead.
+  // One handler, one place.
 
   loadProducts();
 })();
