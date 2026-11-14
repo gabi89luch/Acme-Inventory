@@ -45,13 +45,17 @@ The app makes a GET request to:
 `https://api.openweathermap.org/data/2.5/weather?q=[CITY]&appid=[YOUR_API_KEY]&units=metric`
 as required by the brief.
 
-OpenWeatherMap is always the first request. It returns temperature, humidity,
-pressure, wind and visibility, but its current weather endpoint has no UV index.
-The missing measurements are filled from Open-Meteo using the coordinates
-OpenWeatherMap reported, so every card is populated. If the OpenWeatherMap
-request fails entirely, the app falls back to Open-Meteo and geocodes the city
-name. The data source is always labelled, and both raw JSON responses are
-visible under "Show raw JSON response".
+Before that request, the name is looked up with OpenWeatherMap's geocoding
+endpoint so repeated names pick the right place. A bare "Dublin" would otherwise
+come back as Dublin, California, so the lookup turns it into `q=Dublin,IE`. US
+results use the two letter state code (`q=Dublin,OH,US`). If the lookup fails,
+the typed text is used unchanged and the required request still happens. The
+search box accepts a country or state as well, for example `Dublin, IE` or
+`Dublin, Ohio`.
+
+OpenWeatherMap is the only weather service used. The page renders temperature,
+feels like, condition, humidity, wind, pressure and visibility from the JSON
+response. If the request fails, the error message is shown on the page.
 
 ## Implementation notes
 - The XML is parsed with `DOMParser`, including a `parsererror` check and
